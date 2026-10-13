@@ -119,9 +119,16 @@ export async function POST(request: Request) {
   // 4) 겹침(배타 제약 위반) 처리 ★핵심★ --------------------------------------
   // Postgres 배타 제약 위반의 SQLSTATE 는 '23P01'.
   // Supabase 는 error.code 로 이 값을 돌려주므로 → 409 Conflict 로 변환한다.
+  // 배타 제약 위반(23P01)은 두 가지다. 에러 메시지에 담긴 제약 이름으로 구분해서
+  // "무엇 때문에 막혔는지" 알려준다. (둘 다 409 Conflict)
   if (error?.code === "23P01") {
+    const byUser = error.message.includes("reservations_no_user_overlap");
     return Response.json(
-      { error: "이미 예약된 시간대입니다" },
+      {
+        error: byUser
+          ? "같은 시간에 이미 다른 예약이 있습니다"
+          : "이미 예약된 시간대입니다",
+      },
       { status: 409 }
     );
   }

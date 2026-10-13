@@ -5,6 +5,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Alert, Button, Field, Input } from "@/components/ui";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -29,37 +30,42 @@ export default function LoginPage() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex flex-col gap-3">
-      <h1 className="text-xl font-semibold">로그인</h1>
+    <form onSubmit={onSubmit} className="flex flex-col gap-4">
+      <div>
+        <h1 className="text-lg font-semibold">로그인</h1>
+        <p className="text-xs text-ink-2">가입한 이메일로 로그인하세요</p>
+      </div>
 
-      {error && <p className="rounded bg-red-100 px-3 py-2 text-sm text-red-800">{error}</p>}
+      {error && <Alert>{error}</Alert>}
 
-      <input
-        className="rounded border border-zinc-300 px-3 py-2 text-sm dark:bg-zinc-900"
-        placeholder="email@gmail.com"
-        type="email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        required
-      />
-      <input
-        className="rounded border border-zinc-300 px-3 py-2 text-sm dark:bg-zinc-900"
-        placeholder="비밀번호"
-        type="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        required
-      />
-      <button
-        disabled={loading}
-        className="rounded bg-black py-2 text-sm text-white disabled:opacity-50 dark:bg-white dark:text-black"
-      >
+      <Field label="이메일">
+        <Input
+          type="email"
+          autoComplete="email"
+          placeholder="email@gmail.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+        />
+      </Field>
+      <Field label="비밀번호">
+        <Input
+          type="password"
+          autoComplete="current-password"
+          placeholder="••••••••"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+      </Field>
+
+      <Button type="submit" disabled={loading} className="mt-1 w-full">
         {loading ? "로그인 중..." : "로그인"}
-      </button>
+      </Button>
 
-      <p className="text-center text-sm text-zinc-500">
+      <p className="text-center text-xs text-ink-2">
         계정이 없나요?{" "}
-        <Link href="/signup" className="underline">
+        <Link href="/signup" className="font-medium text-brand hover:underline">
           회원가입
         </Link>
       </p>

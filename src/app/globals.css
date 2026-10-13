@@ -1,26 +1,62 @@
 @import "tailwindcss";
 
+/* ---- 디자인 토큰 -----------------------------------------------------------
+   라이트/다크는 여기 CSS 변수만 바뀐다.
+   컴포넌트는 bg-surface / text-ink / border-line 같은 "의미" 클래스만 쓰므로
+   곳곳에 dark: 변형을 붙일 필요가 없다. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  color-scheme: light;
+  --canvas: #f5f6fa;      /* 페이지 바탕 */
+  --surface: #ffffff;     /* 카드 */
+  --surface-2: #f1f2f7;   /* 카드 안의 한 단계 어두운 면 */
+  --line: #e3e5ec;        /* 테두리 */
+  --ink: #15171e;         /* 본문 글자 */
+  --ink-2: #656b7a;       /* 보조 글자 */
+  --brand: #5856d6;       /* 포인트 색 */
+  --brand-strong: #4644c0;
+  --brand-soft: #ececfb;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    color-scheme: dark;   /* datetime 같은 네이티브 입력도 다크로 */
+    --canvas: #0b0c10;
+    --surface: #141620;
+    --surface-2: #1b1e29;
+    --line: #272b37;
+    --ink: #e9ebf2;
+    --ink-2: #9aa1b3;
+    --brand: #8386f4;
+    --brand-strong: #9b9df8;
+    --brand-soft: #202346;
   }
 }
 
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--ink);
+  font-family:
+    var(--font-geist-sans), -apple-system, "Apple SD Gothic Neo",
+    "Noto Sans KR", system-ui, sans-serif;
+  /* 상단에 은은한 포인트 색 글로우 */
+  background:
+    radial-gradient(
+      70rem 28rem at 50% -12rem,
+      color-mix(in oklab, var(--brand) 16%, transparent),
+      transparent 70%
+    ),
+    var(--canvas);
 }
