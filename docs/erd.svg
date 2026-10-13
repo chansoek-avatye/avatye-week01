@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="1000" viewBox="0 0 980 1000" font-family="-apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+  <rect width="980" height="1000" fill="#ffffff"/>
+  <text x="32" y="44" font-size="22" font-weight="700" fill="#18181b">회의실 예약 서비스 — ERD</text>
+  <text x="32" y="68" font-size="13" fill="#71717a">같은 회의실의 겹치는 시간은 reservations 의 EXCLUSION 제약으로 차단</text>
+
+  <!-- ================= rooms ================= -->
+  <g>
+    <rect x="40" y="110" width="230" height="150" rx="10" fill="#f4f4f5" stroke="#d4d4d8"/>
+    <rect x="40" y="110" width="230" height="34" rx="10" fill="#6366f1"/>
+    <rect x="40" y="128" width="230" height="16" fill="#6366f1"/>
+    <text x="56" y="133" font-size="15" font-weight="700" fill="#ffffff">rooms</text>
+    <text x="252" y="133" font-size="11" fill="#e0e7ff" text-anchor="end">회의실</text>
+
+    <text x="56" y="168" font-size="13" fill="#18181b" font-weight="700">🔑 id</text>
+    <text x="252" y="168" font-size="11" fill="#71717a" text-anchor="end">int, PK</text>
+    <text x="56" y="192" font-size="13" fill="#27272a">name</text>
+    <text x="252" y="192" font-size="11" fill="#71717a" text-anchor="end">text</text>
+    <text x="56" y="216" font-size="13" fill="#27272a">capacity</text>
+    <text x="252" y="216" font-size="11" fill="#71717a" text-anchor="end">int, ≥0</text>
+    <text x="56" y="240" font-size="13" fill="#27272a">created_at</text>
+    <text x="252" y="240" font-size="11" fill="#71717a" text-anchor="end">timestamptz</text>
+  </g>
+
+  <!-- ================= reservations ================= -->
+  <g>
+    <rect x="370" y="90" width="250" height="260" rx="10" fill="#f4f4f5" stroke="#d4d4d8"/>
+    <rect x="370" y="90" width="250" height="34" rx="10" fill="#0ea5e9"/>
+    <rect x="370" y="108" width="250" height="16" fill="#0ea5e9"/>
+    <text x="386" y="113" font-size="15" font-weight="700" fill="#ffffff">reservations</text>
+    <text x="602" y="113" font-size="11" fill="#e0f2fe" text-anchor="end">예약</text>
+
+    <text x="386" y="148" font-size="13" fill="#18181b" font-weight="700">🔑 id</text>
+    <text x="602" y="148" font-size="11" fill="#71717a" text-anchor="end">int, PK</text>
+    <text x="386" y="172" font-size="13" fill="#2563eb">🔗 room_id</text>
+    <text x="602" y="172" font-size="11" fill="#71717a" text-anchor="end">FK → rooms.id</text>
+    <text x="386" y="196" font-size="13" fill="#2563eb">🔗 user_id</text>
+    <text x="602" y="196" font-size="11" fill="#71717a" text-anchor="end">FK → auth.users.id</text>
+    <text x="386" y="220" font-size="13" fill="#27272a">title</text>
+    <text x="602" y="220" font-size="11" fill="#71717a" text-anchor="end">text, null</text>
+    <text x="386" y="244" font-size="13" fill="#27272a">start_at</text>
+    <text x="602" y="244" font-size="11" fill="#71717a" text-anchor="end">timestamptz</text>
+    <text x="386" y="268" font-size="13" fill="#27272a">end_at</text>
+    <text x="602" y="268" font-size="11" fill="#71717a" text-anchor="end">timestamptz</text>
+    <text x="386" y="292" font-size="13" fill="#27272a">status</text>
+    <text x="602" y="292" font-size="11" fill="#71717a" text-anchor="end">enum</text>
+    <text x="386" y="316" font-size="13" fill="#27272a">created_at</text>
+    <text x="602" y="316" font-size="11" fill="#71717a" text-anchor="end">timestamptz</text>
+  </g>
+
+  <!-- ================= auth.users ================= -->
+  <g>
+    <rect x="720" y="110" width="200" height="124" rx="10" fill="#f4f4f5" stroke="#d4d4d8"/>
+    <rect x="720" y="110" width="200" height="34" rx="10" fill="#10b981"/>
+    <rect x="720" y="128" width="200" height="16" fill="#10b981"/>
+    <text x="736" y="133" font-size="15" font-weight="700" fill="#ffffff">auth.users</text>
+    <text x="902" y="133" font-size="11" fill="#d1fae5" text-anchor="end">Supabase Auth</text>
+
+    <text x="736" y="168" font-size="13" fill="#18181b" font-weight="700">🔑 id</text>
+    <text x="902" y="168" font-size="11" fill="#71717a" text-anchor="end">uuid, PK</text>
+    <text x="736" y="192" font-size="13" fill="#27272a">email</text>
+    <text x="902" y="192" font-size="11" fill="#71717a" text-anchor="end">text</text>
+    <text x="736" y="216" font-size="11" fill="#a1a1aa">그 외 Auth 관리 컬럼</text>
+  </g>
+
+  <!-- relationship: rooms 1 - N reservations -->
+  <line x1="270" y1="175" x2="370" y2="172" stroke="#6366f1" stroke-width="2"/>
+  <text x="290" y="166" font-size="12" fill="#6366f1" font-weight="700">1</text>
+  <text x="352" y="166" font-size="12" fill="#6366f1" font-weight="700">N</text>
+
+  <!-- relationship: auth.users 1 - N reservations -->
+  <line x1="720" y1="172" x2="620" y2="196" stroke="#10b981" stroke-width="2"/>
+  <text x="700" y="166" font-size="12" fill="#10b981" font-weight="700">1</text>
+  <text x="634" y="190" font-size="12" fill="#10b981" font-weight="700">N</text>
+
+  <!-- EXCLUSION constraint callout -->
+  <g>
+    <rect x="300" y="396" width="620" height="110" rx="10" fill="#fef3c7" stroke="#f59e0b"/>
+    <text x="320" y="422" font-size="13" font-weight="700" fill="#92400e">★ 핵심 제약 (reservations)</text>
+    <text x="320" y="448" font-size="12" fill="#78350f" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">EXCLUDE USING gist (</text>
+    <text x="340" y="468" font-size="12" fill="#78350f" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">room_id WITH =,  tstzrange(start_at, end_at) WITH &amp;&amp;</text>
+    <text x="320" y="488" font-size="12" fill="#78350f" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">) WHERE (status = 'confirmed');</text>
+  </g>
+  <text x="40" y="430" font-size="12" fill="#52525b">• rooms 1 : N reservations</text>
+  <text x="40" y="452" font-size="12" fill="#52525b">• auth.users 1 : N reservations</text>
+  <text x="40" y="474" font-size="12" fill="#52525b">• 취소 = status</text>
+  <text x="40" y="490" font-size="12" fill="#52525b">  'cancelled' (soft delete)</text>
+</svg>
