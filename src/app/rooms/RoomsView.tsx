@@ -138,9 +138,10 @@ export default function RoomsView({
     };
   }, [roomId]);
 
-  // 성공 메시지는 3초 뒤 자동으로 사라지게
+  // 알림(성공/실패 모두)은 3초 뒤 자동으로 사라지게.
+  // msg 는 매번 새 객체라, 같은 메시지가 다시 떠도 타이머가 새로 시작된다.
   useEffect(() => {
-    if (msg?.kind !== "ok") return;
+    if (!msg) return;
     const t = setTimeout(() => setMsg(null), 3000);
     return () => clearTimeout(t);
   }, [msg]);
