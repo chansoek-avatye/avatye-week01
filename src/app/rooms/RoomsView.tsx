@@ -14,6 +14,11 @@ type Reservation = {
   title: string | null;
   start_at: string;
   end_at: string;
+  // M:N 조인 테이블 → profiles 이름까지 embed 되어 옴
+  reservation_participants: {
+    user_id: string;
+    profiles: { display_name: string } | null;
+  }[];
 };
 
 export default function RoomsView({
@@ -88,6 +93,16 @@ export default function RoomsView({
 
   async function cancel(id: number) {
     await fetch(`/api/reservations/${id}`, { method: "DELETE" });
+    if (roomId) loadReservations(roomId);
+  }
+
+  // 참석 / 참석 취소 (본인)
+  async function toggleJoin(reservationId: number, joined: boolean) {
+    setMsg(null);
+    const res = await fetch(`/api/reservations/${reservationId}/participants`, {
+      method: joined ? "DELETE" : "POST",
+    });
+    if (!res.ok) setMsg({ kind: "err", text: (await res.json()).error });
     if (roomId) loadReservations(roomId);
   }
 
@@ -177,26 +192,61 @@ export default function RoomsView({
             <p className="text-sm text-zinc-500">예약이 없습니다.</p>
           ) : (
             <ul className="flex flex-col gap-2">
-              {reservations.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex items-center justify-between rounded border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800"
-                >
-                  <span>
-                    <b>{r.title || "(제목 없음)"}</b>
-                    <br />
-                    <span className="text-xs text-zinc-500">
-                      {fmt(r.start_at)} ~ {fmt(r.end_at)}
-                    </span>
-                  </span>
-                  {/* 내 예약만 취소 버튼 노출 (서버/RLS 에서도 본인만 허용) */}
-                  {r.user_id === userId && (
-                    <button onClick={() => cancel(r.id)} className="text-xs text-red-500 underline">
-                      취소
-                    </button>
-                  )}
-                </li>
-              ))}
+              {reservations.map((r) => {
+                const participants = r.reservation_participants ?? [];
+                const joined = participants.some((p) => p.user_id === userId);
+                const isMine = r.user_id === userId;
+                return (
+                  <li
+                    key={r.id}
+                    className="flex flex-col gap-2 rounded border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span>
+                        <b>{r.title || "(제목 없음)"}</b>
+                        {isMine && <span className="ml-1 text-xs text-zinc-500">(내 예약)</span>}
+                        <br />
+                        <span className="text-xs text-zinc-500">
+                          {fmt(r.start_at)} ~ {fmt(r.end_at)}
+                        </span>
+                      </span>
+                      <div className="flex shrink-0 gap-2">
+                        <button
+                          onClick={() => toggleJoin(r.id, joined)}
+                          className={`rounded px-2 py-0.5 text-xs ${
+                            joined
+                              ? "bg-zinc-200 dark:bg-zinc-700"
+                              : "bg-black text-white dark:bg-white dark:text-black"
+                          }`}
+                        >
+                          {joined ? "참석 취소" : "참석"}
+                        </button>
+                        {/* 내 예약만 취소 버튼 노출 (서버/RLS 에서도 본인만 허용) */}
+                        {isMine && (
+                          <button onClick={() => cancel(r.id)} className="text-xs text-red-500 underline">
+                            예약 취소
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 참석자 (M:N) */}
+                    {participants.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className="text-xs text-zinc-500">참석자 {participants.length}명:</span>
+                        {participants.map((p) => (
+                          <span
+                            key={p.user_id}
+                            className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs dark:bg-zinc-800"
+                          >
+                            {p.profiles?.display_name ?? "알 수 없음"}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </section>

@@ -19,9 +19,14 @@ export async function GET(request: Request) {
   const roomId = searchParams.get("roomId"); // 선택 필터
 
   // 기본 쿼리: 확정(confirmed) 예약만, 시작시간 순 정렬
+  // 참석자(M:N 조인 테이블) → profiles(이름) 까지 한 번의 쿼리로 함께 가져온다.
+  // (예약마다 참석자를 따로 조회하면 N+1 문제 → 조인 embed 로 해결)
   let query = supabase
     .from("reservations")
-    .select("id, room_id, user_id, title, start_at, end_at, status")
+    .select(
+      "id, room_id, user_id, title, start_at, end_at, status, " +
+        "reservation_participants ( user_id, profiles ( display_name ) )"
+    )
     .eq("status", "confirmed")
     .order("start_at");
 
