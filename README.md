@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 회의실 예약 서비스
 
-## Getting Started
+같은 회의실의 **겹치는 시간 예약과 동시 요청을 PostgreSQL 제약으로 차단**하는 서비스.
+(Next.js App Router + Supabase)
 
-First, run the development server:
+## 구조
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```
+src/app/api/            API 라우트 (Route Handlers)
+  rooms/route.ts          GET  회의실 목록
+  reservations/route.ts   GET  목록 / POST 예약 생성(핵심)
+  reservations/[id]/route.ts  DELETE 예약 취소
+  auth/signup/route.ts    POST 회원가입(Supabase Auth)
+src/lib/supabase/server.ts  서버용 Supabase 클라이언트
+supabase/migrations/0001_init.sql  DB 스키마 (핵심 제약 포함)
+docs/DESIGN.md          설계/발표 문서  ← 먼저 읽기
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 세팅
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+# 1) 패키지 설치
+npm install
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# 2) Supabase 프로젝트 만들고 키 복사
+cp .env.local.example .env.local   # 값 채우기
 
-## Learn More
+# 3) DB 스키마 적용
+#    Supabase 대시보드 > SQL Editor 에 supabase/migrations/0001_init.sql 붙여넣고 Run
 
-To learn more about Next.js, take a look at the following resources:
+# 4) 개발 서버
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 직접 채울 부분
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+API 라우트의 `// TODO` 와 `return ... 501` 줄들을 채우면 됩니다.
+DB 설계 의도와 발표 대본은 [docs/DESIGN.md](docs/DESIGN.md) 참고.
