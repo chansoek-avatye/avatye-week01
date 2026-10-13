@@ -38,6 +38,7 @@ type Reservation = {
 
 const MAX_MINUTES = 4 * 60; // DB 의 최대 예약 길이 제약과 동일
 const QUICK_MINUTES = [30, 60, 90, 120, 240]; // 빠른 길이 선택 버튼
+const PAGE_SIZE = 5; // 예약 현황 한 페이지 개수
 
 // ---- 시간 유틸 --------------------------------------------------------------
 // datetime-local 입력은 "로컬 시간" 문자열(YYYY-MM-DDTHH:mm)을 쓴다.
@@ -67,14 +68,20 @@ function durationLabel(min: number) {
   return [h && `${h}시간`, m && `${m}분`].filter(Boolean).join(" ") || "0분";
 }
 
-// 특정 방의 "다가오는" 예약만 가져오기 (이미 끝난 예약은 제외)
-async function fetchUpcoming(roomId: number): Promise<Reservation[]> {
-  const res = await fetch(`/api/reservations?roomId=${roomId}`);
-  const json = await res.json();
-  const now = Date.now();
-  return ((json.reservations ?? []) as Reservation[]).filter(
-    (r) => new Date(r.end_at).getTime() >= now
+// 특정 방의 "다가오는" 예약을 페이지 단위로 가져오기.
+// 지난 예약 제외와 페이지 나누기를 모두 서버가 처리한다(오프셋 방식).
+type Page = { list: Reservation[]; total: number; totalPages: number };
+
+async function fetchPage(roomId: number, page: number): Promise<Page> {
+  const res = await fetch(
+    `/api/reservations?roomId=${roomId}&upcoming=true&page=${page}&limit=${PAGE_SIZE}`
   );
+  const json = await res.json();
+  return {
+    list: (json.reservations ?? []) as Reservation[],
+    total: json.total ?? 0,
+    totalPages: json.totalPages ?? 1,
+  };
 }
 
 const fmtTime = (s: string) =>
@@ -94,8 +101,12 @@ export default function RoomsView({
   const [rooms, setRooms] = useState<Room[]>([]);
   const [roomId, setRoomId] = useState<number | null>(null);
   const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [loadedRoomId, setLoadedRoomId] = useState<number | null>(null);
-  const loadingList = loadedRoomId !== roomId; // 선택한 방의 데이터가 아직 안 왔으면 로딩 중
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  // "어떤 방의 몇 페이지"를 이미 받아왔는지. 현재 선택과 다르면 로딩 중이다.
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const loadingList = loadedKey !== `${roomId}:${page}`;
 
   // "오늘/내일" 표시용 기준 날짜 (렌더마다 바뀌지 않게 처음 한 번만)
   const [today] = useState(() => startOfDay(new Date()));
@@ -109,10 +120,21 @@ export default function RoomsView({
 
   // ---- 데이터 로드 --------------------------------------------------------
   // 예약/취소/참석 후 목록 새로고침 (이벤트 핸들러에서 호출)
-  const loadReservations = useCallback(async (rid: number) => {
-    setReservations(await fetchUpcoming(rid));
-    setLoadedRoomId(rid);
-  }, []);
+  const loadReservations = useCallback(
+    async (rid: number, targetPage: number) => {
+      const res = await fetchPage(rid, targetPage);
+      // 마지막 항목을 취소해서 페이지가 비면 이전 페이지로 물러난다
+      if (res.list.length === 0 && targetPage > 1) {
+        setPage(targetPage - 1);
+        return;
+      }
+      setReservations(res.list);
+      setTotal(res.total);
+      setTotalPages(res.totalPages);
+      setLoadedKey(`${rid}:${targetPage}`);
+    },
+    []
+  );
 
   useEffect(() => {
     fetch("/api/rooms")
@@ -123,20 +145,27 @@ export default function RoomsView({
       });
   }, []);
 
-  // 방을 바꾸면 그 방의 예약을 불러온다.
-  // ignore: 방을 빠르게 바꿨을 때 늦게 도착한 "이전 방" 응답이 화면을 덮어쓰지 않도록
+  // 방이나 페이지가 바뀌면 그에 맞는 예약을 불러온다.
+  // ignore: 빠르게 전환했을 때 늦게 도착한 이전 응답이 화면을 덮어쓰지 않도록
   useEffect(() => {
     if (roomId == null) return;
     let ignore = false;
-    fetchUpcoming(roomId).then((list) => {
+    fetchPage(roomId, page).then((res) => {
       if (ignore) return;
-      setReservations(list);
-      setLoadedRoomId(roomId);
+      // 페이지 수가 줄어 지금 페이지가 없어졌으면 마지막 페이지로 물러난다
+      if (page > res.totalPages) {
+        setPage(res.totalPages);
+        return;
+      }
+      setReservations(res.list);
+      setTotal(res.total);
+      setTotalPages(res.totalPages);
+      setLoadedKey(`${roomId}:${page}`);
     });
     return () => {
       ignore = true;
     };
-  }, [roomId]);
+  }, [roomId, page]);
 
   // 알림(성공/실패 모두)은 3초 뒤 자동으로 사라지게.
   // msg 는 매번 새 객체라, 같은 메시지가 다시 떠도 타이머가 새로 시작된다.
@@ -210,14 +239,16 @@ export default function RoomsView({
     if (!res.ok) return setMsg({ kind: "err", text: json.error }); // 409(겹침) 포함
     setMsg({ kind: "ok", text: "예약이 완료됐어요" });
     setTitle("");
-    loadReservations(roomId);
+    // 새 예약이 어느 페이지에 들어갈지는 시작 시각에 달렸으니 첫 페이지부터 보여준다
+    if (page === 1) loadReservations(roomId, 1);
+    else setPage(1);
   }
 
   async function cancel(id: number) {
     setBusy(`cancel-${id}`);
     await fetch(`/api/reservations/${id}`, { method: "DELETE" });
     setBusy(null);
-    if (roomId) loadReservations(roomId);
+    if (roomId) loadReservations(roomId, page);
   }
 
   // 참석 / 참석 취소 (본인)
@@ -229,7 +260,7 @@ export default function RoomsView({
     });
     setBusy(null);
     if (!res.ok) setMsg({ kind: "err", text: (await res.json()).error });
-    if (roomId) loadReservations(roomId);
+    if (roomId) loadReservations(roomId, page);
   }
 
   // ---- 화면 ---------------------------------------------------------------
@@ -272,7 +303,10 @@ export default function RoomsView({
                 <button
                   key={r.id}
                   type="button"
-                  onClick={() => setRoomId(r.id)}
+                  onClick={() => {
+                    setRoomId(r.id);
+                    setPage(1); // 방을 바꾸면 첫 페이지부터
+                  }}
                   className={`relative flex items-center gap-3 rounded-xl border p-4 text-left transition ${
                     selected
                       ? "border-brand bg-brand-soft/60 ring-2 ring-brand/30"
@@ -378,7 +412,7 @@ export default function RoomsView({
             <div className="mb-4 flex items-baseline justify-between">
               <h2 className="font-semibold">예약 현황</h2>
               <span className="text-xs text-ink-2">
-                {loadingList ? "불러오는 중" : `다가오는 예약 ${reservations.length}건`}
+                {loadingList ? "불러오는 중" : `다가오는 예약 ${total}건`}
               </span>
             </div>
 
@@ -501,6 +535,31 @@ export default function RoomsView({
                   </div>
                 ))}
               </div>
+            )}
+
+            {/* 페이지 이동 (오프셋 방식) — 한 페이지뿐이면 숨긴다 */}
+            {totalPages > 1 && (
+              <nav className="mt-4 flex items-center justify-between border-t border-line pt-3">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={page <= 1}
+                  onClick={() => setPage(page - 1)}
+                >
+                  이전
+                </Button>
+                <span className="text-xs text-ink-2">
+                  {page} / {totalPages}
+                </span>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={page >= totalPages}
+                  onClick={() => setPage(page + 1)}
+                >
+                  다음
+                </Button>
+              </nav>
             )}
           </section>
         </div>

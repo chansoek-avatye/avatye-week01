@@ -11,31 +11,84 @@ import { createClient } from "@/lib/supabase/server";
 // DB 의 reservations_max_duration CHECK 제약(4시간)과 같은 값
 const MAX_DURATION_MS = 4 * 60 * 60 * 1000;
 
+// 페이지네이션 기본값
+const DEFAULT_LIMIT = 5;
+const MAX_LIMIT = 50;
+
+// 쿼리 문자열에서 양의 정수를 안전하게 뽑는다 (없거나 이상하면 기본값)
+function positiveInt(value: string | null, fallback: number, max: number) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return Math.min(Math.floor(n), max);
+}
+
 // ---------------------------------------------------------------------------
-// GET /api/reservations?roomId=1
-//   예약 현황을 조회한다. roomId 를 주면 그 방 것만, 없으면 전체(확정 예약).
+// GET /api/reservations?roomId=1&upcoming=true&page=1&limit=5
+//   예약 현황을 조회한다. 오프셋 방식 페이지네이션.
+//     page   — 1부터 시작하는 페이지 번호
+//     limit  — 한 페이지 개수 (최대 50)
+//     offset — (page - 1) * limit  →  Supabase 의 .range(offset, offset+limit-1)
+//
+//   "지난 예약 제외(upcoming)" 를 서버에서 처리하는 게 중요하다.
+//   클라이언트에서 걸러내면 10건을 받아 3건만 남는 식이 되어 페이지 크기가 깨진다.
 // ---------------------------------------------------------------------------
 export async function GET(request: Request) {
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
 
   const roomId = searchParams.get("roomId"); // 선택 필터
+  const upcoming = searchParams.get("upcoming") === "true";
+  const page = positiveInt(searchParams.get("page"), 1, Number.MAX_SAFE_INTEGER);
+  const limit = positiveInt(searchParams.get("limit"), DEFAULT_LIMIT, MAX_LIMIT);
+  const offset = (page - 1) * limit;
 
   // 기본 쿼리: 확정(confirmed) 예약만, 시작시간 순 정렬
   // 참석자(M:N 조인 테이블) → profiles(이름) 까지 한 번의 쿼리로 함께 가져온다.
   // (예약마다 참석자를 따로 조회하면 N+1 문제 → 조인 embed 로 해결)
+  //
+  // count: "exact" → 전체 건수를 함께 받아 총 페이지 수를 계산한다.
+  // 정렬에 id 를 더한 이유: start_at 이 같은 예약들의 순서가 매번 달라지면
+  // 페이지를 넘길 때 같은 항목이 중복되거나 빠질 수 있다.
+  const nowIso = new Date().toISOString();
+
   let query = supabase
     .from("reservations")
     .select(
-      "id, room_id, user_id, title, start_at, end_at, status, reservation_participants ( user_id, profiles ( display_name ) )"
+      "id, room_id, user_id, title, start_at, end_at, status, reservation_participants ( user_id, profiles ( display_name ) )",
+      { count: "exact" }
     )
     .eq("status", "confirmed")
-    .order("start_at");
+    .order("start_at")
+    .order("id");
 
   // roomId 가 들어오면 그 방으로 필터를 추가
   if (roomId) query = query.eq("room_id", Number(roomId));
+  // 이미 끝난 예약은 제외
+  if (upcoming) query = query.gte("end_at", nowIso);
 
-  const { data, error } = await query;
+  const { data, error, count } = await query.range(offset, offset + limit - 1);
+
+  // 범위를 벗어난 페이지 요청(PGRST103).
+  // 예약이 취소되어 페이지 수가 줄었거나, 없는 페이지로 바로 접근했을 때 생긴다.
+  // 에러가 아니라 "빈 페이지"로 응답해서, 클라이언트가 마지막 페이지로 돌아갈 수 있게 한다.
+  // (위 목록 쿼리와 같은 조건이어야 total 이 어긋나지 않는다)
+  if (error?.code === "PGRST103") {
+    let countQuery = supabase
+      .from("reservations")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "confirmed");
+    if (roomId) countQuery = countQuery.eq("room_id", Number(roomId));
+    if (upcoming) countQuery = countQuery.gte("end_at", nowIso);
+
+    const { count: total } = await countQuery;
+    return Response.json({
+      reservations: [],
+      page,
+      limit,
+      total: total ?? 0,
+      totalPages: Math.max(1, Math.ceil((total ?? 0) / limit)),
+    });
+  }
 
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
@@ -49,11 +102,17 @@ export async function GET(request: Request) {
     : { data: [] };
   const nameById = new Map((hosts ?? []).map((h) => [h.id, h.display_name]));
 
+  const total = count ?? 0;
+
   return Response.json({
     reservations: rows.map((r) => ({
       ...r,
       host_name: nameById.get(r.user_id as string) ?? null,
     })),
+    page,
+    limit,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
   });
 }
 
