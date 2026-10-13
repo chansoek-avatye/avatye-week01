@@ -12,7 +12,7 @@ export async function GET() {
     const { data, error } = await supabase
              .from("rooms")
              .select("id, name, capacity")
-             .order("name");
+             .order("id");
 
   // TODO: error 가 있으면 500 으로 응답
     if (error) return Response.json({ error: error.message }, { status: 500 });

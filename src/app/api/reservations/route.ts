@@ -8,6 +8,9 @@
 
 import { createClient } from "@/lib/supabase/server";
 
+// DB 의 reservations_max_duration CHECK 제약(4시간)과 같은 값
+const MAX_DURATION_MS = 4 * 60 * 60 * 1000;
+
 // ---------------------------------------------------------------------------
 // GET /api/reservations?roomId=1
 //   예약 현황을 조회한다. roomId 를 주면 그 방 것만, 없으면 전체(확정 예약).
@@ -24,8 +27,7 @@ export async function GET(request: Request) {
   let query = supabase
     .from("reservations")
     .select(
-      "id, room_id, user_id, title, start_at, end_at, status, " +
-        "reservation_participants ( user_id, profiles ( display_name ) )"
+      "id, room_id, user_id, title, start_at, end_at, status, reservation_participants ( user_id, profiles ( display_name ) )"
     )
     .eq("status", "confirmed")
     .order("start_at");
@@ -37,7 +39,22 @@ export async function GET(request: Request) {
 
   if (error) return Response.json({ error: error.message }, { status: 500 });
 
-  return Response.json({ reservations: data });
+  // 예약자(host) 이름 붙이기.
+  // reservations.user_id 는 auth.users 를 참조해서 profiles 를 바로 embed 할 수 없으므로,
+  // 등장한 user_id 들을 모아 profiles 를 "한 번만" 조회해서 매핑한다. (N+1 회피)
+  const rows = data ?? [];
+  const hostIds = [...new Set(rows.map((r) => r.user_id as string))];
+  const { data: hosts } = hostIds.length
+    ? await supabase.from("profiles").select("id, display_name").in("id", hostIds)
+    : { data: [] };
+  const nameById = new Map((hosts ?? []).map((h) => [h.id, h.display_name]));
+
+  return Response.json({
+    reservations: rows.map((r) => ({
+      ...r,
+      host_name: nameById.get(r.user_id as string) ?? null,
+    })),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -76,6 +93,13 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+  // 최대 4시간 (DB 에도 CHECK 제약이 있지만, 친절한 메시지를 위해 먼저 확인)
+  if (new Date(endAt).getTime() - new Date(startAt).getTime() > MAX_DURATION_MS) {
+    return Response.json(
+      { error: "예약은 최대 4시간까지 가능합니다" },
+      { status: 400 }
+    );
+  }
 
   // 3) INSERT 시도 ------------------------------------------------------------
   // 겹치는지 "미리 조회"하지 않는다. 그냥 넣어보고, DB 제약이 판정하게 맡긴다.
@@ -99,6 +123,13 @@ export async function POST(request: Request) {
     return Response.json(
       { error: "이미 예약된 시간대입니다" },
       { status: 409 }
+    );
+  }
+  // CHECK 제약 위반(23514): 시간 역전 / 4시간 초과 — API 검증을 우회해도 DB 가 막는다
+  if (error?.code === "23514") {
+    return Response.json(
+      { error: "예약 시간이 올바르지 않습니다 (최대 4시간)" },
+      { status: 400 }
     );
   }
   if (error) {

@@ -1,118 +1,164 @@
-# 회의실 예약 서비스 — 설계 문서 (발표용)
+# 회의실 예약 서비스 — 설계 정리 (중간점검)
 
-> 한 줄 소개: **회의실 예약 시 중복과 동시 요청을 DB 제약으로 막는 서비스**
+> **한 줄 소개**: 같은 회의실의 겹치는 예약과 동시 요청을 **DB 제약(EXCLUSION)** 으로 막는 회의실 예약 서비스
+
+- 스택: Next.js 16 (App Router, Route Handler) + TypeScript / Supabase (PostgreSQL + Auth)
+- ERD 이미지: [erd.png](./erd.png)
 
 ---
 
 ## 1. 문제 정의
 
-회의실 예약에서 가장 중요한 불변식(invariant):
+핵심 규칙: **"같은 회의실의 겹치는 시간에는 확정 예약이 하나만 존재해야 한다."**
 
-> "같은 회의실의 겹치는 시간에는 예약이 하나만 존재해야 한다."
-
-순진한 구현(앱에서 조회 후 삽입)은 **동시 요청**에 취약하다 → race condition(TOCTOU).
-이 서비스는 그 판정을 **DB 제약으로 위임**해서 동시성 문제까지 한 번에 해결한다.
+앱 코드로 `겹치는 예약 조회 → 없으면 INSERT` 하면, 동시에 들어온 두 요청이 둘 다 "없음"을 보고
+둘 다 INSERT 한다 (race condition). → **판정을 DB 에 맡겨서** 원자적으로 해결.
 
 ---
 
-## 2. 기술 선택
+## 2. DB 설계
 
-| 영역 | 선택 | 이유 |
+### 테이블 (4개 + Supabase 의 auth.users)
+
+| 테이블 | 역할 | 주요 컬럼 |
 |---|---|---|
-| 프레임워크 | Next.js (App Router, Route Handler) | API 서버 + 웹을 한 프로젝트로 |
-| DB | Supabase (PostgreSQL) | EXCLUSION 제약 등 RDB 고급 기능, Auth 내장 |
-| 인증/회원가입 | Supabase Auth | 비번 해싱·세션 관리를 위임, `auth.users` 재사용 |
+| `rooms` | 회의실 | id, name, capacity |
+| `reservations` | 예약 | room_id, user_id, title, start_at, end_at, status |
+| `profiles` | 앱용 사용자 정보 | id(=auth.users.id), display_name, department |
+| `reservation_participants` | 참석자 (조인 테이블) | reservation_id, user_id |
+| `auth.users` | 회원 (Supabase 관리) | id(uuid), email |
+
+### 관계
+
+| 관계 | 유형 | 구현 |
+|---|---|---|
+| rooms → reservations | 1 : N | `reservations.room_id` FK |
+| auth.users → reservations | 1 : N | `reservations.user_id` FK (예약자) |
+| auth.users ↔ profiles | 1 : 1 | `profiles.id` 가 PK 이자 FK |
+| reservations ↔ profiles | M : N | `reservation_participants` + 복합 PK |
+
+### 제약 — "규칙을 DB 가 보장한다"
+
+| 제약 | 막는 것 | 위반 코드 |
+|---|---|---|
+| **EXCLUDE** `(room_id =, tstzrange(start_at,end_at) &&) WHERE status='confirmed'` | 같은 방·겹치는 시간의 확정 예약 | `23P01` |
+| CHECK `start_at < end_at` | 끝이 시작보다 빠른 예약 | `23514` |
+| CHECK `end_at - start_at <= 4 hours` | 4시간 초과 예약 | `23514` |
+| 복합 PK `(reservation_id, user_id)` | 같은 사람 중복 참석 | `23505` |
+| FK + `on delete cascade` | 없는 방/사람 참조, 고아 데이터 | `23503` |
+| enum `reservation_status` | 잘못된 상태값 | — |
+| RLS 정책 | 남의 예약 수정, 권한 없는 참석자 추가 | `42501` |
+
+### 핵심 설계 결정
+
+- **시간은 구간(start/end)** → 고정 슬롯이 아니라 임의 시간 예약 가능. 겹침은 `tstzrange` + `&&`.
+- **취소는 soft delete** (`status='cancelled'`) → 이력 보존 + 제약이 `confirmed` 에만 걸려서 **취소하면 시간이 다시 열림**.
+- **profiles 를 1:1 로 분리** → auth.users 는 Supabase 관리라 컬럼 추가 불가.
+- **트리거로 profiles 자동 생성** (`handle_new_user`) → 가입과 프로필 생성이 항상 같이 일어남.
+- 4시간 제한은 CHECK 가능(컬럼끼리 계산 = 불변), **과거 시간 금지는 CHECK 불가**(`now()` 가 변함 → 트리거/API 로 해야 함).
+
+### 마이그레이션 순서
+
+| 파일 | 내용 |
+|---|---|
+| `0001_init.sql` | rooms, reservations, EXCLUSION 제약, 시드 |
+| `0002_policies.sql` | GRANT + RLS (조회는 모두, 생성·취소는 본인) |
+| `0003_profiles_participants.sql` | profiles(1:1) + 가입 트리거, participants(M:N), RLS |
+| `0004_backfill_profiles.sql` | 트리거 이전 가입자 profiles 채우기 |
+| `0005_max_duration.sql` | 최대 4시간 CHECK |
 
 ---
 
-## 3. DB 모델링
+## 3. API 설계
 
-### 테이블
+REST 스타일: 자원(명사) URL + HTTP 메서드(동사). 인증은 Supabase 세션 쿠키.
 
-- **rooms** — 회의실 (id, name, capacity)
-- **reservations** — 예약 (id, room_id→rooms, user_id→auth.users, title, start_at, end_at, status, created_at)
-- **auth.users** — Supabase Auth 가 관리 (회원)
+| 메서드 | 경로 | 인증 | 성공 | 실패 |
+|---|---|---|---|---|
+| POST | `/api/auth/signup` | X | 201 | 400 |
+| POST | `/api/auth/login` | X | 200 | 400, 401 |
+| POST | `/api/auth/logout` | O | 200 | — |
+| GET | `/api/auth/me` | X | 200 | — |
+| GET / PUT | `/api/profile` | O | 200 | 401 |
+| GET | `/api/rooms` | X | 200 | 500 |
+| GET | `/api/reservations?roomId=` | X | 200 | 500 |
+| POST | `/api/reservations` | O | 201 | 400, 401, **409** |
+| DELETE | `/api/reservations/:id` | O (본인) | 200 | 401 |
+| GET | `/api/reservations/:id/participants` | X | 200 | 500 |
+| POST | `/api/reservations/:id/participants` | O | 201 | 401, 403, 404, 409 |
+| DELETE | `/api/reservations/:id/participants` | O | 200 | 401, 404 |
 
-관계: `rooms 1 : N reservations`, `auth.users 1 : N reservations`
+### 예약 생성 흐름 (핵심)
 
-### 핵심 제약 (발표 하이라이트)
-
-```sql
-create extension btree_gist;
-
-constraint reservations_no_overlap exclude using gist (
-  room_id                      with =,   -- 같은 회의실이고
-  tstzrange(start_at, end_at)  with &&   -- 시간 구간이 겹치면
-) where (status = 'confirmed')           -- 확정 예약끼리만
+```
+POST /api/reservations
+ 1. 세션에서 로그인 사용자 확인            → 없으면 401
+ 2. 입력 검증 (필수값, 시작<종료, 4시간)   → 틀리면 400  (친절한 메시지용 1차 방어)
+ 3. INSERT 시도 — 겹침을 "미리 조회하지 않음"
+ 4. DB 제약이 판정 → 23P01 이면 409 / 성공이면 201
 ```
 
-- `=` : 같은 방인지 비교
-- `&&` : 두 시간 구간이 겹치는지 비교 (range 연산자)
-- `where`: 취소된 예약은 제외 → 취소하면 그 시간대가 다시 열림
-- 동시 INSERT 2건 → DB가 원자적으로 판정 → **하나만 성공, 나머지는 `23P01` 에러**
+- `user_id` 는 요청 body 가 아니라 **세션에서 확인한 값** → 남의 이름으로 예약 불가.
 
-> 비교: 앱 레벨 체크(race 발생) vs UNIQUE(고정 슬롯만) vs **EXCLUSION(임의 시간대 + 동시성 안전)**
+### DB 에러 → HTTP 상태 코드
+
+| DB 코드 | 의미 | HTTP |
+|---|---|---|
+| `23P01` | 배타 제약 위반 (시간 겹침) | 409 Conflict |
+| `23505` | 고유 제약 위반 (중복 참석) | 409 Conflict |
+| `23514` | CHECK 위반 (시간 역전, 4시간 초과) | 400 Bad Request |
+| `23503` | FK 위반 (없는 예약/프로필) | 404 Not Found |
+| `42501` | RLS 위반 (권한 없음) | 403 Forbidden |
+
+### 성능 포인트
+
+예약 목록은 참석자 이름까지 **조인(embed) 한 번**으로 가져온다. 예약마다 참석자를 따로 조회하면 N+1 문제가 생긴다.
 
 ---
 
-## 4. API 설계
-
-REST 스타일. 자원(resource) 중심 URL + HTTP 메서드로 행위 표현.
-
-| 메서드 | 경로 | 설명 | 주요 응답 |
-|---|---|---|---|
-| POST | `/api/auth/signup` | 회원가입 | 201 / 400 |
-| GET | `/api/rooms` | 회의실 목록 | 200 |
-| GET | `/api/reservations?roomId=&from=&to=` | 예약 목록(필터) | 200 |
-| POST | `/api/reservations` | 예약 생성 | 201 / 400 / 401 / **409(중복)** |
-| DELETE | `/api/reservations/:id` | 예약 취소(soft delete) | 204 / 401 / 404 |
-
-### 상태 코드 설계 포인트
-
-- **409 Conflict** = 시간대 중복. DB의 `23P01`(배타 제약 위반)을 그대로 409로 번역.
-- **401** = 미로그인, **400** = 입력 오류 → 계층별로 책임을 나눈다.
-
-### 예약 생성 흐름
+## 4. 회원가입 / 인증
 
 ```
-클라이언트 → POST /api/reservations
-  1. 로그인 확인 (아니면 401)
-  2. 입력 검증: roomId/startAt/endAt, startAt < endAt (아니면 400)
-  3. INSERT 시도 (겹침 조회를 "직접 하지 않음")
-  4. DB 제약 위반(23P01) → 409 / 성공 → 201
+[가입]  POST /api/auth/signup { email, password, displayName, department }
+          → Supabase Auth 가 auth.users 생성 (비밀번호 해싱 포함)
+          → DB 트리거 handle_new_user 가 profiles 행 자동 생성
+          → 세션 쿠키 발급 → /rooms 로 이동
+[요청]  API 마다 supabase.auth.getUser() 로 쿠키의 세션을 확인
+[화면]  /rooms 는 서버 컴포넌트에서 로그인 확인 → 비로그인이면 /login 으로 redirect
+[권한]  RLS 로 DB 레벨에서도 "본인 것만 수정" 을 강제 (API 를 우회해도 막힘)
 ```
 
----
-
-## 5. 동시성 시연 (발표 데모 아이디어)
-
-같은 방·같은 시간으로 두 요청을 동시에 던지면 하나만 201, 하나는 409가 나온다:
-
-```bash
-# 쿠키(로그인 세션)가 필요하면 -b/-H 로 넣어주세요
-curl -s -X POST localhost:3000/api/reservations \
-  -H 'content-type: application/json' \
-  -d '{"roomId":1,"startAt":"2026-10-14T01:00:00Z","endAt":"2026-10-14T02:00:00Z"}' &
-curl -s -X POST localhost:3000/api/reservations \
-  -H 'content-type: application/json' \
-  -d '{"roomId":1,"startAt":"2026-10-14T01:00:00Z","endAt":"2026-10-14T02:00:00Z"}' &
-wait
-```
+- **로그인 식별자는 이메일**, 내부 식별자는 auth 의 **uuid**, 표시 이름은 **profiles**.
+- 데모 편의상 이메일 인증(Confirm email)은 꺼둠 → 실서비스에서는 켜야 함.
 
 ---
 
-## 6. 발표 때 할 말 (요약 대본)
+## 5. 화면
 
-1. "회의실 예약의 핵심 불변식은 *겹치는 예약 금지* 입니다."
-2. "앱 코드로 조회 후 삽입하면 동시 요청에 race condition이 생깁니다."
-3. "그래서 Postgres의 EXCLUSION 제약으로 DB가 원자적으로 막게 했습니다."
-4. "API는 겹침을 직접 조회하지 않고, 제약 위반 에러(23P01)를 409로 변환합니다."
-5. "회원가입은 Supabase Auth에 위임해 `auth.users`를 예약의 주인으로 참조합니다."
+| 경로 | 내용 |
+|---|---|
+| `/login` | 로그인 |
+| `/signup` | 회원가입 (이메일·비밀번호·이름·부서) |
+| `/rooms` | 회의실 선택 · 예약 폼(기본 1시간, 최대 4시간 안내) · 다가오는 예약 현황(날짜별, 예약자·참석자 표시) |
 
 ---
 
-## 7. 더 해보면 좋은 것 (여유 있으면)
+## 6. 예상 질문
 
-- RLS 정책으로 "본인 예약만 취소" 를 DB 레벨에서 강제 (migration 파일 [6]번 참고)
-- 예약 폼/목록 UI (src/app/page.tsx)
-- 과거 시간 예약 금지, 최대 예약 길이 제한 (check 제약 또는 API 검증)
+| 질문 | 답 |
+|---|---|
+| 왜 앱에서 겹침을 확인 안 하나? | 조회와 삽입 사이에 다른 요청이 끼어들 수 있음(race). DB 가 INSERT 시점에 원자적으로 판정해야 안전. |
+| UNIQUE 로는 안 되나? | UNIQUE 는 "값이 같은지"만 봄. 1:00~2:00 과 1:30~2:30 같은 **부분 겹침**은 못 막음. |
+| `btree_gist` 는 왜? | GiST 인덱스에서 `room_id =` 같은 일반 비교를 하려면 필요. |
+| 2시 종료 / 2시 시작은 겹침? | 아님. `tstzrange` 기본이 `[시작, 끝)` 이라 끝 시각 불포함 → 연속 예약 허용. |
+| 취소하면 왜 다시 예약 가능? | soft delete 로 status 만 바꾸고, 제약이 `WHERE status='confirmed'` 라서 제외됨. |
+| 예약 id 가 건너뛰는데? | 실패한 INSERT 도 시퀀스 번호를 소모함(롤백 안 됨). 정상 동작. |
+| 과거 시간 예약은? | `now()` 는 CHECK 에 못 씀 → 트리거나 API 검증으로 해야 함 (개선 예정). |
+
+---
+
+## 7. 한계 / 개선 방향
+
+- 과거 시간 예약 금지 (트리거 또는 API 검증)
+- 예약 취소 API 가 "없는 예약 / 남의 예약" 을 403·404 로 구분하지 않음
+- 이메일 인증, 운영시간 제한, 반복 예약은 미구현
