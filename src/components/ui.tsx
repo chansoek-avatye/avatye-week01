@@ -1,5 +1,4 @@
-// 화면 세 개(로그인 / 회원가입 / 회의실)가 같이 쓰는 작은 UI 조각들.
-// 색은 globals.css 의 토큰(bg-surface, text-ink, bg-brand ...)만 사용한다.
+// 로그인/회원가입/회의실 화면 공용 UI 조각 (색은 globals.css 토큰만 사용)
 
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
 
@@ -63,8 +62,7 @@ export function Alert({ kind = "err", children }: { kind?: "ok" | "err"; childre
   );
 }
 
-// ---- 아바타 / 브랜드 마크 ---------------------------------------------------
-// 이름 첫 글자를 동그라미에 넣는다 ("김호스트" → 김, "abc@..." → A)
+// ---- 아바타 / 브랜드 마크 (아바타는 이름 첫 글자 표시) ----
 export function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md" }) {
   const cls = size === "sm" ? "h-5 w-5 text-[10px]" : "h-8 w-8 text-sm";
   return (

@@ -1,7 +1,4 @@
-// /calendar — 확정 예약 현황을 주간 캘린더로 본다 (읽기 전용)
-//
-// /rooms 와 같은 방식: 서버에서 로그인 여부를 먼저 확인하고,
-// 로그인 안 했으면 화면을 그리기 전에 /login 으로 보낸다.
+// /calendar — 주간 예약 캘린더(읽기 전용), 비로그인이면 렌더 전 /login 으로 이동
 
 import { redirect } from "next/navigation";
 import { connection } from "next/server";

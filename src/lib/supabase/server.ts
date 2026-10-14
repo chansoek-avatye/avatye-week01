@@ -1,8 +1,4 @@
-// 서버(Route Handler / Server Component)에서 쓰는 Supabase 클라이언트.
-// 요청마다 쿠키를 읽어 "현재 로그인한 사용자" 기준으로 동작한다.
-// 이 파일은 플러밍(설정 코드)이라 완성형으로 둡니다. 로직은 API 라우트에서 채웁니다.
-//
-// 사전 준비: npm install @supabase/supabase-js @supabase/ssr
+// 서버용 Supabase 클라이언트 — 요청 쿠키 기준 로그인 사용자로 동작 (@supabase/ssr 필요)
 
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";

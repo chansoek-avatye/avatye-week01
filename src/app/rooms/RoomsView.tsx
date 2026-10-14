@@ -1,7 +1,6 @@
 "use client";
 
-// 회의실 화면의 인터랙션 부분 (회의실 선택 / 예약 폼 / 예약 현황).
-// 모든 데이터는 /api/* 라우트를 통해 주고받는다.
+// 회의실 화면 인터랙션(회의실 선택 / 예약 폼 / 예약 현황), 데이터는 /api/* 경유
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -41,8 +40,7 @@ const MAX_MINUTES = 4 * 60; // DB 의 최대 예약 길이 제약과 동일
 const QUICK_MINUTES = [30, 60, 90, 120, 240]; // 빠른 길이 선택 버튼
 const PAGE_SIZE = 5; // 예약 현황 한 페이지 개수
 
-// ---- 시간 유틸 --------------------------------------------------------------
-// datetime-local 입력은 "로컬 시간" 문자열(YYYY-MM-DDTHH:mm)을 쓴다.
+// ---- 시간 유틸 (datetime-local 은 로컬 시간 문자열 YYYY-MM-DDTHH:mm) ----
 function toLocalInput(d: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -69,8 +67,7 @@ function durationLabel(min: number) {
   return [h && `${h}시간`, m && `${m}분`].filter(Boolean).join(" ") || "0분";
 }
 
-// 특정 방의 "다가오는" 예약을 페이지 단위로 가져오기.
-// 지난 예약 제외와 페이지 나누기를 모두 서버가 처리한다(오프셋 방식).
+// 방의 다가오는 예약을 페이지 단위로 조회 (필터·페이징은 서버 처리)
 type Page = { list: Reservation[]; total: number; totalPages: number };
 
 async function fetchPage(roomId: number, page: number): Promise<Page> {
@@ -119,8 +116,7 @@ export default function RoomsView({
   const [msg, setMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null); // 처리 중인 동작 키 (중복 클릭 방지)
 
-  // ---- 데이터 로드 --------------------------------------------------------
-  // 예약/취소/참석 후 목록 새로고침 (이벤트 핸들러에서 호출)
+  // ---- 데이터 로드 (예약/취소/참석 후 목록 새로고침) ----
   const loadReservations = useCallback(
     async (rid: number, targetPage: number) => {
       const res = await fetchPage(rid, targetPage);
@@ -146,8 +142,7 @@ export default function RoomsView({
       });
   }, []);
 
-  // 방이나 페이지가 바뀌면 그에 맞는 예약을 불러온다.
-  // ignore: 빠르게 전환했을 때 늦게 도착한 이전 응답이 화면을 덮어쓰지 않도록
+  // 방·페이지 변경 시 예약 로드 (ignore 로 늦게 온 이전 응답 무시)
   useEffect(() => {
     if (roomId == null) return;
     let ignore = false;
@@ -168,8 +163,7 @@ export default function RoomsView({
     };
   }, [roomId, page]);
 
-  // 알림(성공/실패 모두)은 3초 뒤 자동으로 사라지게.
-  // msg 는 매번 새 객체라, 같은 메시지가 다시 떠도 타이머가 새로 시작된다.
+  // 알림은 3초 뒤 자동 숨김 (msg 가 새 객체라 같은 문구도 타이머 재시작)
   useEffect(() => {
     if (!msg) return;
     const t = setTimeout(() => setMsg(null), 3000);

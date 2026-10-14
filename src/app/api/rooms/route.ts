@@ -1,7 +1,4 @@
-// GET /api/rooms  — 회의실 목록 조회
-//
-// 가장 쉬운 라우트부터 시작합니다. 이걸로 "Supabase 연결 → 조회 → JSON 응답"
-// 흐름을 손에 익히세요.
+// GET /api/rooms — 회의실 목록 조회
 
 import { createClient } from "@/lib/supabase/server";
 

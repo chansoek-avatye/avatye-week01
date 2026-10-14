@@ -1,10 +1,4 @@
-// /api/reservations/:id/participants
-//   GET    — 참석자 목록 (이름 포함)
-//   POST   — 참석자 추가 (본인 참석, 또는 호스트가 다른 사람 추가)
-//   DELETE — 참석자 제외 (본인 참석 취소, 또는 호스트가 제외)
-//
-// reservation_participants 는 예약 ↔ 사용자 M:N 조인 테이블.
-// user_id 가 profiles(id) 를 참조하므로, 이름을 함께 조회(embed)할 수 있다.
+// /api/reservations/:id/participants — 참석자(M:N 조인 테이블) GET 조회 / POST 추가 / DELETE 제외
 
 import { createClient } from "@/lib/supabase/server";
 
@@ -26,8 +20,7 @@ export async function GET(
   return Response.json({ participants: data });
 }
 
-// POST -----------------------------------------------------------------------
-// body: { userId?: string }  — 생략하면 "본인(로그인 사용자)"을 참석자로 추가
+// POST — body: { userId?: string }, 생략 시 본인을 참석자로 추가
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -68,8 +61,7 @@ export async function POST(
   return Response.json({ participant: data }, { status: 201 });
 }
 
-// DELETE ---------------------------------------------------------------------
-// body: { userId?: string }  — 생략하면 "본인" 참석 취소
+// DELETE — body: { userId?: string }, 생략 시 본인 참석 취소
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -85,8 +77,7 @@ export async function DELETE(
   const body = await request.json().catch(() => ({}));
   const targetUserId = body.userId ?? user.id;
 
-  // .select() 로 실제 삭제된 행을 돌려받아, 0건이면 404 로 구분한다.
-  // (RLS 에 막혀도 에러 없이 0건이 되므로 같은 404 로 처리)
+  // .select() 로 삭제된 행을 받아 0건(없음·RLS 차단)이면 404
   const { data, error } = await supabase
     .from("reservation_participants")
     .delete()

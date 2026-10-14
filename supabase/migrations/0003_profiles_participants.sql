@@ -1,24 +1,13 @@
--- =============================================================================
--- 0003_profiles_participants.sql  —  테이블 확장
--- -----------------------------------------------------------------------------
--- 관계 모델링을 두 가지 더 보여주기 위한 확장:
---   profiles                : auth.users 와 1:1  (앱용 사용자 정보: 이름/부서)
---   reservation_participants: 예약 ↔ 사용자 M:N  (회의 참석자)
---
--- 실행: Supabase 대시보드 > SQL Editor 에 붙여넣고 Run (0001, 0002 적용 이후)
--- =============================================================================
+-- 0003_profiles_participants.sql — profiles(auth.users 1:1) + reservation_participants(M:N) 추가
 
--- [1] profiles : auth.users 와 1:1 -------------------------------------------
--- auth.users 는 Supabase 가 관리(이메일 등)하므로 직접 컬럼을 못 늘린다.
--- 그래서 PK = FK(auth.users.id) 인 1:1 테이블을 따로 둬서 앱 정보를 담는다.
+-- [1] profiles — auth.users 를 못 늘리므로 PK=FK 1:1 테이블로 앱 정보 저장
 create table profiles (
   id           uuid primary key references auth.users(id) on delete cascade,
   display_name text not null,
   department   text
 );
 
--- 회원가입(auth.users insert) 시 profiles 행을 자동 생성하는 트리거.
--- security definer: RLS/권한을 우회해 시스템 권한으로 insert (표준 Supabase 패턴).
+-- 회원가입 시 profiles 자동 생성 트리거 (security definer)
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -41,9 +30,7 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 
 
--- [2] reservation_participants : 예약 ↔ 사용자 M:N ---------------------------
--- 하나의 예약에 여러 참석자, 한 사용자가 여러 예약에 참석 → 다대다.
--- 조인 테이블 + 복합 기본키(두 FK의 조합)로 "같은 사람을 같은 예약에 중복 추가" 방지.
+-- [2] reservation_participants — 예약↔사용자 M:N, 복합 PK 로 중복 참석 방지
 create table reservation_participants (
   reservation_id int  not null references reservations(id) on delete cascade,
   user_id        uuid not null references profiles(id)     on delete cascade,

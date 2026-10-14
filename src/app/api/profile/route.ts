@@ -1,8 +1,4 @@
-// /api/profile
-//   GET — 내 프로필 조회
-//   PUT — 내 프로필 수정 (이름/부서)
-//
-// profiles 는 auth.users 와 1:1. 로그인한 본인 것만 다룬다.
+// /api/profile — GET 내 프로필 조회 / PUT 이름·부서 수정 (profiles 는 auth.users 와 1:1)
 
 import { createClient } from "@/lib/supabase/server";
 

@@ -1,8 +1,4 @@
-// POST /api/auth/login   — 로그인 (이메일/비번)
-// POST /api/auth/logout  은 아래 별도 파일(logout/route.ts)
-//
-// signInWithPassword 가 성공하면 세션 쿠키가 응답에 심어져서(브라우저가 저장)
-// 이후 요청부터 "로그인한 사용자"로 인식된다.
+// POST /api/auth/login — 이메일/비번 로그인, 성공 시 세션 쿠키 발급 (로그아웃은 logout/route.ts)
 
 import { createClient } from "@/lib/supabase/server";
 

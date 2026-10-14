@@ -1,7 +1,6 @@
 "use client";
 
-// /signup — 회원가입 화면. 이름/부서는 profiles 테이블로 들어간다(DB 트리거).
-// 성공하면(이메일 인증 OFF 상태라 바로 세션 생성) /rooms 로 이동.
+// /signup — 회원가입(이름/부서는 트리거로 profiles 저장), 성공 시 /rooms 로 이동
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";

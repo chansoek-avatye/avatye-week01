@@ -1,9 +1,4 @@
-// POST /api/auth/signup  — 회원가입 (Supabase Auth)
-// body: { email: string, password: string, displayName?: string, department?: string }
-//
-// 회원가입을 직접 테이블 만들어 비번 해싱... 할 필요 없이 Supabase Auth 에 위임한다.
-// signUp 이 성공하면 auth.users 에 사용자가 생기고, DB 트리거(handle_new_user)가
-// profiles 행을 자동 생성한다. displayName/department 는 거기로 전달된다.
+// POST /api/auth/signup — Supabase Auth 회원가입, handle_new_user 트리거가 profiles 자동 생성
 
 import { createClient } from "@/lib/supabase/server";
 
@@ -20,8 +15,7 @@ export async function POST(request: Request) {
       const { data, error } = await supabase.auth.signUp({
         email: body.email,
         password: body.password,
-        // options.data 는 auth.users.raw_user_meta_data 에 저장되고,
-        // handle_new_user 트리거가 이 값을 읽어 profiles 를 채운다.
+        // options.data → raw_user_meta_data → handle_new_user 트리거가 profiles 채움
         options: {
           data: {
             display_name: body.displayName,

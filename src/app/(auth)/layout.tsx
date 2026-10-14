@@ -1,5 +1,4 @@
-// (auth) 는 라우트 그룹: URL 에는 안 나타나고(/login, /signup) 레이아웃만 공유한다.
-// 위에 브랜드 마크, 아래에 카드. 로그인/회원가입 폼이 카드 안에 들어간다.
+// (auth) 라우트 그룹(URL 미노출): /login·/signup 이 브랜드 마크 + 카드 레이아웃을 공유
 
 import { BrandMark } from "@/components/ui";
 

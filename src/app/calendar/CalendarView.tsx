@@ -1,8 +1,6 @@
 "use client";
 
-// 주간 캘린더 화면 (읽기 전용).
-// 회의실 하나를 골라 7일 × 시간 격자에 확정 예약을 블록으로 그린다.
-// 한 열(하루) 안에서 블록이 절대 겹치지 않는 것 = DB 의 EXCLUSION 제약이 보장하는 것.
+// 회의실별 주간 예약 캘린더(읽기 전용) — 하루 열 안 블록 비겹침은 DB EXCLUSION 제약이 보장
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -54,7 +52,7 @@ const fmtTime = (s: string) =>
 const fmtFull = (s: string) =>
   new Date(s).toLocaleString("ko-KR", { month: "long", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false });
 
-// 한 주 치 예약을 한 번에 가져온다 (서버의 from/to 기간 필터 사용)
+// 한 주 치 예약 조회 (서버 from/to 필터)
 async function fetchWeek(roomId: number, weekStart: Date): Promise<Reservation[]> {
   const from = weekStart.toISOString();
   const to = addDays(weekStart, 7).toISOString();
@@ -86,7 +84,7 @@ export default function CalendarView({ userId, userLabel }: { userId: string; us
       });
   }, []);
 
-  // 방이나 주가 바뀌면 그 주의 예약을 불러온다 (늦게 온 이전 응답은 무시)
+  // 방·주 변경 시 해당 주 예약 로드 (늦게 온 이전 응답은 무시)
   useEffect(() => {
     if (roomId == null) return;
     let ignore = false;
@@ -104,7 +102,7 @@ export default function CalendarView({ userId, userLabel }: { userId: string; us
   // ---- 파생 값 ------------------------------------------------------------
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
 
-  // 요일별 블록 위치 계산: 시작/끝 분(分)을 픽셀로 바꾸고, 표시 범위(08–22시) 밖은 잘라낸다
+  // 요일별 블록 위치(px) 계산, 08–22시 밖은 잘라냄
   const byDay = useMemo(() => {
     const map = new Map<number, Block[]>();
     for (const r of reservations) {
@@ -113,7 +111,7 @@ export default function CalendarView({ userId, userLabel }: { userId: string; us
       const dayIdx = Math.round((startOfDay(s).getTime() - weekStart.getTime()) / 86400000);
       if (dayIdx < 0 || dayIdx > 6) continue;
       const sMin = s.getHours() * 60 + s.getMinutes() - HOUR_START * 60;
-      // 자정을 넘기는 예약은 그 날의 끝까지로 잘라서 그린다
+      // 자정을 넘기면 그날 끝까지만 그림
       const crossesMidnight = startOfDay(e).getTime() > startOfDay(s).getTime();
       const eMin = crossesMidnight ? TOTAL_MIN : e.getHours() * 60 + e.getMinutes() - HOUR_START * 60;
       const top = Math.max(0, sMin);

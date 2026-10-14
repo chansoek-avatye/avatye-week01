@@ -1,9 +1,4 @@
-// DELETE /api/reservations/:id  — 예약 취소
-//
-// 실제로 행을 지우기보다 status 를 'cancelled' 로 바꾸는 게(soft delete) 보통 낫다.
-// (이력이 남고, 배타 제약은 'confirmed' 에만 걸리므로 취소하면 그 시간대가 다시 열린다)
-//
-// Next 16: 동적 라우트의 params 는 Promise 라서 await 해야 한다.
+// DELETE /api/reservations/:id — 예약 취소(status='cancelled' soft delete, Next 16 params 는 await)
 
 import { createClient } from "@/lib/supabase/server";
 
@@ -21,8 +16,7 @@ export async function DELETE(
   }
 
 
-  // TODO: 해당 id 예약의 status 를 'cancelled' 로 update.
-  //       본인 예약만 취소되도록 user_id 조건도 함께 걸기.
+  // TODO: 본인(user_id) 예약만 status 를 'cancelled' 로 update
 
       const { error } = await supabase
         .from("reservations")
