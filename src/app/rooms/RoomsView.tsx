@@ -3,6 +3,7 @@
 // 회의실 화면의 인터랙션 부분 (회의실 선택 / 예약 폼 / 예약 현황).
 // 모든 데이터는 /api/* 라우트를 통해 주고받는다.
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -277,6 +278,13 @@ export default function RoomsView({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Link
+              href="/calendar"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-ink-2 transition hover:bg-surface-2 hover:text-ink"
+            >
+              <IconCalendar className="h-3.5 w-3.5" />
+              캘린더
+            </Link>
             <Avatar name={userLabel} />
             <span className="hidden text-sm sm:inline">
               <b>{userLabel}</b> 님

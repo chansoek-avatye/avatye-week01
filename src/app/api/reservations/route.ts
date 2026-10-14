@@ -28,6 +28,8 @@ function positiveInt(value: string | null, fallback: number, max: number) {
 //     page   — 1부터 시작하는 페이지 번호
 //     limit  — 한 페이지 개수 (최대 50)
 //     offset — (page - 1) * limit  →  Supabase 의 .range(offset, offset+limit-1)
+//     from/to — 기간 필터(ISO). 이 창과 "겹치는" 예약만 (캘린더 주간 뷰에서 사용)
+//               겹침 조건: end_at >= from  AND  start_at < to
 //
 //   "지난 예약 제외(upcoming)" 를 서버에서 처리하는 게 중요하다.
 //   클라이언트에서 걸러내면 10건을 받아 3건만 남는 식이 되어 페이지 크기가 깨진다.
@@ -38,6 +40,11 @@ export async function GET(request: Request) {
 
   const roomId = searchParams.get("roomId"); // 선택 필터
   const upcoming = searchParams.get("upcoming") === "true";
+  const from = searchParams.get("from"); // 기간 필터 (선택)
+  const to = searchParams.get("to");
+  if ((from && Number.isNaN(Date.parse(from))) || (to && Number.isNaN(Date.parse(to)))) {
+    return Response.json({ error: "from/to 는 ISO 날짜 형식이어야 합니다" }, { status: 400 });
+  }
   const page = positiveInt(searchParams.get("page"), 1, Number.MAX_SAFE_INTEGER);
   const limit = positiveInt(searchParams.get("limit"), DEFAULT_LIMIT, MAX_LIMIT);
   const offset = (page - 1) * limit;
@@ -65,6 +72,9 @@ export async function GET(request: Request) {
   if (roomId) query = query.eq("room_id", Number(roomId));
   // 이미 끝난 예약은 제외
   if (upcoming) query = query.gte("end_at", nowIso);
+  // 기간 필터: 창(from~to)과 겹치는 예약만
+  if (from) query = query.gte("end_at", from);
+  if (to) query = query.lt("start_at", to);
 
   const { data, error, count } = await query.range(offset, offset + limit - 1);
 
@@ -79,6 +89,8 @@ export async function GET(request: Request) {
       .eq("status", "confirmed");
     if (roomId) countQuery = countQuery.eq("room_id", Number(roomId));
     if (upcoming) countQuery = countQuery.gte("end_at", nowIso);
+    if (from) countQuery = countQuery.gte("end_at", from);
+    if (to) countQuery = countQuery.lt("start_at", to);
 
     const { count: total } = await countQuery;
     return Response.json({
